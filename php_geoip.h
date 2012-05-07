@@ -66,6 +66,7 @@ PHP_FUNCTION(geoip_time_zone_by_country_and_region);
 
 ZEND_BEGIN_MODULE_GLOBALS(geoip)
 	char* custom_directory;
+	long  open_flags; 
 ZEND_END_MODULE_GLOBALS(geoip)
 
 #ifdef ZTS
