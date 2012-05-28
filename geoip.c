@@ -15,6 +15,7 @@
   | Author: Olivier Hill   <ohill@php.net>                               |
   |         Matthew Fonda                                                |
   |         Davide Mendolia <davide@tuenti.com>                          |
+  |         Galo Navarro <gnavarro@tuenti.com>                   		 |
   +----------------------------------------------------------------------+
   Please contact support@maxmind.com with any comments
 */
@@ -37,6 +38,7 @@
 ZEND_DECLARE_MODULE_GLOBALS(geoip)
 
 static int le_geoip;
+static long gi_curr_db_last_modified = 0;
 static GeoIP * gi_country_edition = NULL;
 static GeoIP * gi_org_edition = NULL;
 static GeoIP * gi_city_edition = NULL;
@@ -59,6 +61,7 @@ function_entry geoip_functions[] = {
 	PHP_FE(geoip_db_avail,	NULL)
 	PHP_FE(geoip_db_get_all_info,	NULL)
 	PHP_FE(geoip_db_filename,	NULL)
+	PHP_FE(geoip_db_reload,	NULL)
 #if LIBGEOIP_VERSION >= 1004001
 	PHP_FE(geoip_region_name_by_code,	NULL)
 	PHP_FE(geoip_time_zone_by_country_and_region,	NULL)
@@ -98,6 +101,10 @@ PHP_INI_BEGIN()
 	STD_PHP_INI_ENTRY("geoip.custom_directory", NULL, PHP_INI_ALL, OnUpdateString, custom_directory, zend_geoip_globals, geoip_globals)
 #endif
 	STD_PHP_INI_ENTRY("geoip.open_flags", "0", PHP_INI_ALL, OnUpdateLong, open_flags, zend_geoip_globals, geoip_globals)
+	// allow to chose if we let the module detect new db files and reload them
+	// automatically, or expect a call to geoip_db_reload; gnavarro - Thu Apr 19 
+	STD_PHP_INI_ENTRY("geoip.autoreload_db", "0", PHP_INI_ALL, OnUpdateBool, autoreload_db, zend_geoip_globals, geoip_globals)
+
 
 PHP_INI_END()
 /* }}} */
@@ -107,6 +114,7 @@ PHP_INI_END()
 static void php_geoip_init_globals(zend_geoip_globals *geoip_globals)
 {
 	geoip_globals->custom_directory = NULL;
+	geoip_globals->autoreload_db = 0;
 }
 /* }}} */
 
@@ -304,19 +312,47 @@ PHP_FUNCTION(geoip_database_info)
 }
 /* }}} */
 
-
 GeoIP* open_country_db() 
 {
-	if (gi_country_edition == NULL) {
-		if (GeoIP_db_avail(GEOIP_COUNTRY_EDITION)) {
-                	gi_country_edition = GeoIP_open_type(GEOIP_COUNTRY_EDITION, GEOIP_G(open_flags));
-        	} else {
-                	php_error_docref(NULL TSRMLS_CC, E_WARNING, "Required database not available at %s.", GeoIPDBFileName[GEOIP_COUNTRY_EDITION]);
-                	return NULL;
-        	}
+
+	int force_reload = (gi_country_edition == NULL);
+	struct stat db_stat;
+
+	if (force_reload || GEOIP_G(autoreload_db)) {
+		if (stat(GeoIPDBFileName[GEOIP_COUNTRY_EDITION], &db_stat)) {
+			php_error_docref(NULL TSRMLS_CC, E_WARNING, "Could not stat database file %s.", GeoIPDBFileName[GEOIP_COUNTRY_EDITION]);
+			return NULL;
+		}
+		force_reload |= (gi_curr_db_last_modified < &db_stat.st_mtime);
 	}
+
+	if (force_reload) {
+		if (gi_country_edition != NULL) {
+			GeoIP_delete(gi_country_edition);
+		}
+		if (GeoIP_db_avail(GEOIP_COUNTRY_EDITION)) {
+			gi_country_edition = GeoIP_open_type(GEOIP_COUNTRY_EDITION, GEOIP_G(open_flags));
+			gi_curr_db_last_modified = &db_stat.st_mtime;
+		} else {
+			php_error_docref(NULL TSRMLS_CC, E_WARNING, "Required database not available at %s.", GeoIPDBFileName[GEOIP_COUNTRY_EDITION]);
+			return NULL;
+		}
+	}
+
 	return gi_country_edition;
+
 }
+
+/* {{{ proto boolean geoip_db_reload() 
+   Resets the current db file and reloads it, returns TRUE if db reloaded successfully */
+PHP_FUNCTION(geoip_db_reload)
+{
+	GeoIP_delete(gi_country_edition);
+	gi_country_edition = NULL;
+	RETURN_BOOL(open_country_db() != NULL);
+	
+}
+/* }}} */
 
 /* {{{ proto string geoip_country_code_by_name( string hostname )
    Return the Country Code found in the GeoIP Database */
