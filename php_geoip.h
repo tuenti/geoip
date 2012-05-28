@@ -14,6 +14,7 @@
   +----------------------------------------------------------------------+
   | Author: Olivier Hill <ohill@php.net>                                 |
   |         Matthew Fonda                                                |
+  |         Galo Navarro <gnavarro@tuenti.com>                   		 |
   +----------------------------------------------------------------------+
   Please contact support@maxmind.com with any comments
 */
@@ -59,6 +60,7 @@ PHP_FUNCTION(geoip_isp_by_name);
 PHP_FUNCTION(geoip_db_avail);
 PHP_FUNCTION(geoip_db_get_all_info);
 PHP_FUNCTION(geoip_db_filename);
+PHP_FUNCTION(geoip_db_reload);
 #if LIBGEOIP_VERSION >= 1004001
 PHP_FUNCTION(geoip_region_name_by_code);
 PHP_FUNCTION(geoip_time_zone_by_country_and_region);
@@ -67,6 +69,7 @@ PHP_FUNCTION(geoip_time_zone_by_country_and_region);
 ZEND_BEGIN_MODULE_GLOBALS(geoip)
 	char* custom_directory;
 	long  open_flags; 
+	int	  autoreload_db; 
 ZEND_END_MODULE_GLOBALS(geoip)
 
 #ifdef ZTS
